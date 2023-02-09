@@ -1,6 +1,7 @@
 import {DynamoDB} from "aws-sdk";
 import {Handler} from "@aws-cdk/aws-lambda";
 import {Message} from "./models/message";
+import {SQSEvent} from "aws-lambda";
 
 const dynamo = new DynamoDB.DocumentClient();
 const TableName: string = process.env.TABLE_NAME ?? 'no_env_users';
