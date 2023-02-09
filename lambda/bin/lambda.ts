@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { VpnUserStack } from '../lib/vpn-user-stack';
+import {VpnUserIntegrationStack} from '../lib/vpn-user-integration-stack';
 
 const app = new cdk.App();
-new VpnUserStack(app, 'LambdaStack');
+new VpnUserIntegrationStack(app, 'VpnUserIntegrationStack');

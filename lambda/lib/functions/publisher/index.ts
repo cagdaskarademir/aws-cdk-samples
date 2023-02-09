@@ -1,5 +1,5 @@
 import {Handler} from '@aws-cdk/aws-lambda';
-import {DynamoDB, SNS, SQS} from 'aws-sdk';
+import {DynamoDB, SQS} from 'aws-sdk';
 import {randomUUID} from "crypto";
 import {User} from "./models/user";
 
@@ -42,7 +42,8 @@ async function sendMessageToQueue(id: string) {
 async function saveUserToDynamo(data: User) {
 
     data.id = randomUUID();
-    data.createdDate = new Date();
+
+    data.createdDate = new Date().getUTCDate();
 
     const params: DynamoDB.DocumentClient.PutItemInput = {
         TableName: TableName,

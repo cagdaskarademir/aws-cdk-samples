@@ -5,6 +5,6 @@ export interface User {
     lastName: string;
     companyCode: string | null;
     email: string;
-    createdDate: Date;
+    createdDate: number;
     expiredDate: Date | null;
 }
