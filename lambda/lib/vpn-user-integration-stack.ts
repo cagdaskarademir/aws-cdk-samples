@@ -1,4 +1,5 @@
 import {aws_iam, CfnOutput, Duration, RemovalPolicy, Stack, StackProps} from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as dynamo from 'aws-cdk-lib/aws-dynamodb';
 import {Queue} from "aws-cdk-lib/aws-sqs";
@@ -6,13 +7,22 @@ import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import {Construct} from 'constructs';
 import {RetentionDays} from "aws-cdk-lib/aws-logs";
 import {FunctionUrlAuthType, Runtime} from "@aws-cdk/aws-lambda";
-import {Effect, Role} from "aws-cdk-lib/aws-iam";
+import {Effect, ManagedPolicy, PolicyStatement, Role, ServicePrincipal} from "aws-cdk-lib/aws-iam";
 import {SqsEventSource} from 'aws-cdk-lib/aws-lambda-event-sources';
 
 
 export class VpnUserIntegrationStack extends Stack {
     constructor(scope: Construct, id: string, props?: StackProps) {
         super(scope, id, props);
+
+        const vpc = new ec2.Vpc(this, 'VpnUserIntegrationVpc', {maxAzs: 2});
+        const instance = new ec2.Instance(this, 'VpnUserIntegrationInstance', {
+            instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
+            machineImage: ec2.MachineImage.latestAmazonLinux({
+                generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
+            }),
+            vpc: vpc
+        });
 
         const queue = new Queue(this, 'VpnUserIntegrationQueue', {
             queueName: 'lambda-vpn-user-queue',
@@ -60,6 +70,12 @@ export class VpnUserIntegrationStack extends Stack {
             actions: ['*']
         }));
 
+        publisher.addToRolePolicy(new aws_iam.PolicyStatement({
+            effect: Effect.ALLOW,
+            resources: [queue.queueArn],
+            actions: ['*']
+        }));
+
         const publisherUrl = publisher.addFunctionUrl({
             authType: FunctionUrlAuthType.NONE,
             cors: {
@@ -81,11 +97,7 @@ export class VpnUserIntegrationStack extends Stack {
                 TABLE_NAME: table.tableName,
                 QUEUE_URL: queue.queueUrl
             },
-            logRetention: RetentionDays.ONE_DAY,
-            role: new Role(this, 'VpnUserConsumerLambdaRole', {
-                assumedBy: new aws_iam.ServicePrincipal('lambda.amazonaws.com'),
-                roleName: 'vpn-consumer-lambda-role'
-            })
+            logRetention: RetentionDays.ONE_DAY
         });
 
         consumer.addEventSource(
@@ -94,20 +106,29 @@ export class VpnUserIntegrationStack extends Stack {
             }),
         );
 
-        publisher.addToRolePolicy(new aws_iam.PolicyStatement({
-            effect: Effect.ALLOW,
-            resources: [queue.queueArn],
-            actions: ['*']
-        }));
-
         table.grantReadWriteData(consumer);
 
-        consumer.addToRolePolicy(new aws_iam.PolicyStatement({
-            actions: ['ec2:RunInstances'],
-            resources: ['*'],
-            effect: Effect.ALLOW
+        // Add IAM role to Lambda function to allow it to run commands on EC2 instance
+        const role = new Role(this, 'VpnUserIntegrationRole', {
+            assumedBy: new ServicePrincipal('lambda.amazonaws.com')
+        });
+
+        role.addManagedPolicy(ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'));
+
+        role.addToPolicy(new PolicyStatement({
+            effect: Effect.ALLOW,
+            resources: ["*"],
+            actions: ['ec2:RunCommand']
         }));
 
+        consumer.addToRolePolicy(new PolicyStatement({
+            effect: Effect.ALLOW,
+            resources: ['*'],
+            actions: ['ssm:SendCommand']
+        }));
+
+        // Grant permissions to Lambda function to execute on EC2 instance
+        instance.role.addManagedPolicy(ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonEC2RoleforSSM'));
 
     }
 }

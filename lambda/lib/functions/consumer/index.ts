@@ -17,7 +17,29 @@ export const handler: Handler = async (event: SQSEvent) => {
         //let user = await getDataFromDynamo(message.id);
         //console.log(JSON.stringify(user));
 
+        const ssm = new SSM();
 
+        let fileName = "data" + new Date().getUTCDate() + ".txt";
+        const instanceId = InstanceId;
+        const command1 = "echo 'This is a test' > " + fileName;
+        const command2 = "cat " + fileName;
+
+        const params = {
+            InstanceIds: [instanceId],
+            DocumentName: 'AWS-RunShellScript',
+            Parameters: {
+                commands: [command1, command2]
+            }
+        };
+
+        try {
+            const response = await ssm.sendCommand(params).promise();
+            console.log('Command sent:', response?.Command?.CommandId);
+            return 'Command sent' + fileName;
+        } catch (error) {
+            console.error('Error:', error);
+            throw error;
+        }
     }
 
     console.log('Instance Id --> ', InstanceId);
