@@ -6,7 +6,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import {Construct} from 'constructs';
 import {RetentionDays} from "aws-cdk-lib/aws-logs";
 import {FunctionUrlAuthType, Runtime} from "@aws-cdk/aws-lambda";
-import {Effect} from "aws-cdk-lib/aws-iam";
+import {Effect, Role} from "aws-cdk-lib/aws-iam";
 import {SqsEventSource} from 'aws-cdk-lib/aws-lambda-event-sources';
 
 
@@ -76,11 +76,16 @@ export class VpnUserIntegrationStack extends Stack {
             runtime: Runtime.NODEJS_16_X,
             entry: './lib/functions/consumer/index.ts',
             handler: 'handler',
+            timeout: Duration.seconds(30),
             environment: {
                 TABLE_NAME: table.tableName,
                 QUEUE_URL: queue.queueUrl
             },
-            logRetention: RetentionDays.ONE_DAY
+            logRetention: RetentionDays.ONE_DAY,
+            role: new Role(this, 'VpnUserConsumerLambdaRole', {
+                assumedBy: new aws_iam.ServicePrincipal('lambda.amazonaws.com'),
+                roleName: 'vpn-consumer-lambda-role'
+            })
         });
 
         consumer.addEventSource(
@@ -89,6 +94,20 @@ export class VpnUserIntegrationStack extends Stack {
             }),
         );
 
+        publisher.addToRolePolicy(new aws_iam.PolicyStatement({
+            effect: Effect.ALLOW,
+            resources: [queue.queueArn],
+            actions: ['*']
+        }));
+
         table.grantReadWriteData(consumer);
+
+        consumer.addToRolePolicy(new aws_iam.PolicyStatement({
+            actions: ['ec2:RunInstances'],
+            resources: ['*'],
+            effect: Effect.ALLOW
+        }));
+
+
     }
 }
